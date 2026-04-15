@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kafka Cluster Monitor</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #06090f;
+      --surface: rgba(255,255,255,0.04);
+      --surface-hover: rgba(255,255,255,0.07);
+      --border: rgba(255,255,255,0.08);
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --accent: #6366f1;
+      --accent-glow: rgba(99,102,241,0.25);
+      --green: #22c55e;
+      --green-glow: rgba(34,197,94,0.2);
+      --red: #ef4444;
+      --red-glow: rgba(239,68,68,0.2);
+      --yellow: #f59e0b;
+      --partition-colors: #6366f1, #06b6d4, #f59e0b;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Starfield background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 0%, rgba(99,102,241,0.08) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 100%, rgba(6,182,212,0.06) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ─── Layout ─── */
+    .page { position: relative; z-index: 1; max-width: 1400px; margin: 0 auto; padding: 0 24px 60px; }
+
+    /* ─── Header ─── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 28px 0 32px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 36px;
+    }
+    .logo { display: flex; align-items: center; gap: 14px; }
+    .logo-icon {
+      width: 44px; height: 44px;
+      background: linear-gradient(135deg, var(--accent), #06b6d4);
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+      box-shadow: 0 0 24px var(--accent-glow);
+    }
+    .logo h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
+    .logo span { font-size: 13px; color: var(--muted); margin-top: 1px; display: block; }
+    
+    #status-badge {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      padding: 8px 16px;
+      font-size: 13px; font-weight: 500;
+      transition: all 0.3s;
+    }
+    .pulse {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    /* ─── Section titles ─── */
+    .section-title {
+      font-size: 11px; font-weight: 600; letter-spacing: 1.2px;
+      text-transform: uppercase; color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    /* ─── Stats row ─── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px 22px;
+      transition: background 0.2s;
+    }
+    .stat-card:hover { background: var(--surface-hover); }
+    .stat-label { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+    .stat-value { font-size: 32px; font-weight: 700; font-family: 'JetBrains Mono', monospace; line-height: 1; }
+    .stat-value.green { color: var(--green); }
+    .stat-value.red { color: var(--red); }
+    .stat-value.accent { color: var(--accent); }
+    .stat-value.yellow { color: var(--yellow); }
+
+    /* ─── Two-col layout ─── */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 40px; }
+
+    /* ─── Cards ─── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px;
+    }
+
+    /* ─── Broker list ─── */
+    .broker-item {
+      display: flex; align-items: center;
+      padding: 14px 16px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      margin-bottom: 10px;
+      background: rgba(255,255,255,0.02);
+      transition: all 0.3s;
+      gap: 14px;
+    }
+    .broker-item.alive { border-color: rgba(34,197,94,0.25); background: rgba(34,197,94,0.04); }
+    .broker-item.dead { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.06); animation: dead-flash 1.5s ease-in-out infinite; }
+    @keyframes dead-flash { 0%,100% { background: rgba(239,68,68,0.06); } 50% { background: rgba(239,68,68,0.12); } }
+
+    .broker-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .broker-dot.alive { background: var(--green); box-shadow: 0 0 10px var(--green); }
+    .broker-dot.dead  { background: var(--red);   box-shadow: 0 0 10px var(--red); }
+
+    .broker-name { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 500; flex: 1; }
+    .broker-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+    .badge {
+      font-size: 10px; font-weight: 600; letter-spacing: 0.5px;
+      padding: 3px 8px; border-radius: 6px; text-transform: uppercase;
+    }
+    .badge-partition { background: rgba(99,102,241,0.15); color: #a5b4fc; border: 1px solid rgba(99,102,241,0.3); }
+    .badge-alive { background: rgba(34,197,94,0.12); color: #86efac; border: 1px solid rgba(34,197,94,0.3); }
+    .badge-dead  { background: rgba(239,68,68,0.12);  color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+    .broker-hb { font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+
+    /* ─── Partition table ─── */
+    .partition-row {
+      display: flex; align-items: center;
+      padding: 12px 16px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      margin-bottom: 10px;
+      background: rgba(255,255,255,0.02);
+      gap: 14px;
+      transition: all 0.3s;
+    }
+    .p-id {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px; font-weight: 600;
+      color: var(--accent); min-width: 110px;
+    }
+    .p-arrow { color: var(--muted); font-size: 14px; }
+    .p-leader {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px; color: var(--text); flex: 1;
+    }
+    .p-status-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .p-status-dot.alive { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .p-status-dot.dead  { background: var(--red);   box-shadow: 0 0 6px var(--red); }
+
+    /* ─── Consumer groups ─── */
+    .group-card {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px; margin-bottom: 12px;
+    }
+    .group-name { font-size: 13px; font-weight: 600; color: var(--yellow); margin-bottom: 10px; }
+    .consumer-item { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+    .consumer-id { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted); }
+    .consumer-partition { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #a5b4fc; }
+
+    /* ─── Event log ─── */
+    #log-container {
+      background: rgba(0,0,0,0.3);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 20px 24px;
+      max-height: 260px;
+      overflow-y: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      line-height: 1.8;
+    }
+    #log-container::-webkit-scrollbar { width: 4px; }
+    #log-container::-webkit-scrollbar-track { background: transparent; }
+    #log-container::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    .log-entry { display: flex; gap: 12px; }
+    .log-time { color: var(--muted); flex-shrink: 0; }
+    .log-msg.info  { color: #a5b4fc; }
+    .log-msg.warn  { color: #fcd34d; }
+    .log-msg.error { color: #fca5a5; }
+    .log-msg.ok    { color: #86efac; }
+
+    /* ─── Footer ─── */
+    footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 40px; }
+
+    @media (max-width: 900px) {
+      .stats-row { grid-template-columns: 1fr 1fr; }
+      .grid-2    { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 500px) {
+      .stats-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">⚡</div>
+      <div>
+        <h1>Kafka Cluster Monitor</h1>
+        <span>Real-Time Distributed Message Broker Dashboard</span>
+      </div>
+    </div>
+    <div id="status-badge">
+      <div class="pulse"></div>
+      <span id="badge-text">Connecting...</span>
+    </div>
+  </header>
+
+  <!-- Stats row -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">Alive Brokers</div>
+      <div class="stat-value green" id="stat-alive">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Dead Brokers</div>
+      <div class="stat-value red" id="stat-dead">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Active Partitions</div>
+      <div class="stat-value accent" id="stat-partitions">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Consumer Groups</div>
+      <div class="stat-value yellow" id="stat-groups">—</div>
+    </div>
+  </div>
+
+  <!-- Brokers + Partitions -->
+  <div class="grid-2">
+    <div class="card">
+      <div class="section-title">Broker Nodes</div>
+      <div id="broker-list"></div>
+    </div>
+    <div class="card">
+      <div class="section-title">Partition → Leader Mapping</div>
+      <div id="partition-list"></div>
+    </div>
+  </div>
+
+  <!-- Consumer Groups -->
+  <div class="card" style="margin-bottom:24px;">
+    <div class="section-title">Consumer Group Assignments</div>
+    <div id="consumer-groups"></div>
+  </div>
+
+  <!-- Event Log -->
+  <div class="section-title">Live Event Log</div>
+  <div id="log-container"></div>
+
+  <footer style="margin-top:28px;">
+    Auto-refreshing every 1.5 seconds · Broker timeout = 5s · Built with FastAPI + Vanilla JS
+  </footer>
+</div>
+
+<script>
+  const TIMEOUT = 5;
+  const prevStatus = {};
+  const logLines = [];
+  const MAX_LOG = 80;
+
+  function addLog(msg, type = 'info') {
+    const now = new Date().toLocaleTimeString();
+    logLines.unshift({ time: now, msg, type });
+    if (logLines.length > MAX_LOG) logLines.pop();
+    renderLog();
+  }
+
+  function renderLog() {
+    const el = document.getElementById('log-container');
+    el.innerHTML = logLines.map(l =>
+      `<div class="log-entry"><span class="log-time">${l.time}</span><span class="log-msg ${l.type}">${l.msg}</span></div>`
+    ).join('');
+  }
+
+  function extractName(url) {
+    if (!url) return 'unassigned';
+    return url.replace('http://', '').replace(':8000', '');
+  }
+
+  async function refresh() {
+    try {
+      const res = await fetch('/state');
+      if (!res.ok) throw new Error('Non-200 response');
+      const data = await res.json();
+
+      // ── Badge ──
+      document.getElementById('badge-text').textContent = 'Live';
+
+      const brokers = data.brokers || {};
+      const partitions = data.partitions || {};
+      const groups = data.consumer_groups || {};
+
+      // ── Stats ──
+      const alive = Object.values(brokers).filter(b => b.status === 'ALIVE').length;
+      const dead  = Object.values(brokers).filter(b => b.status === 'DEAD').length;
+      document.getElementById('stat-alive').textContent = alive;
+      document.getElementById('stat-dead').textContent  = dead;
+      document.getElementById('stat-partitions').textContent = Object.keys(partitions).length;
+      document.getElementById('stat-groups').textContent = Object.keys(groups).length;
+
+      // ── Broker status change detection ──
+      for (const [url, info] of Object.entries(brokers)) {
+        const name = extractName(url);
+        if (prevStatus[url] && prevStatus[url] !== info.status) {
+          if (info.status === 'DEAD') {
+            addLog(`🔴 BROKER ${name} went OFFLINE — failover triggered`, 'error');
+          } else {
+            addLog(`🟢 BROKER ${name} came back ONLINE`, 'ok');
+          }
+        }
+        prevStatus[url] = info.status;
+      }
+
+      // ── Partition leader change detection ──
+      for (const [pid, leader] of Object.entries(partitions)) {
+        if (prevStatus[pid] && prevStatus[pid] !== leader) {
+          addLog(`⚡ ${pid} leader reassigned → ${extractName(leader)}`, 'warn');
+        }
+        prevStatus[pid] = leader;
+      }
+
+      // ── Render Brokers ──
+      const brokerEl = document.getElementById('broker-list');
+      const leaderOf = {};
+      for (const [pid, url] of Object.entries(partitions)) {
+        if (url) { if (!leaderOf[url]) leaderOf[url] = []; leaderOf[url].push(pid); }
+      }
+
+      brokerEl.innerHTML = Object.entries(brokers).map(([url, info]) => {
+        const st = info.status === 'ALIVE' ? 'alive' : 'dead';
+        const name = extractName(url);
+        const hb = info.last_heartbeat_seconds_ago;
+        const pBadges = (leaderOf[url] || []).map(p =>
+          `<span class="badge badge-partition">Leader: ${p}</span>`).join('');
+        const statusBadge = `<span class="badge badge-${st}">${info.status}</span>`;
+        return `
+          <div class="broker-item ${st}">
+            <div class="broker-dot ${st}"></div>
+            <div class="broker-name">${name}</div>
+            <div class="broker-badges">${pBadges}${statusBadge}</div>
+            <div class="broker-hb">${hb}s ago</div>
+          </div>`;
+      }).join('') || '<div style="color:var(--muted);font-size:13px;">No brokers registered yet...</div>';
+
+      // ── Render Partitions ──
+      const partEl = document.getElementById('partition-list');
+      partEl.innerHTML = Object.entries(partitions).map(([pid, leader]) => {
+        const isAlive = leader && brokers[leader]?.status === 'ALIVE';
+        const st = leader ? (isAlive ? 'alive' : 'dead') : 'dead';
+        return `
+          <div class="partition-row">
+            <div class="p-id">${pid}</div>
+            <div class="p-arrow">→</div>
+            <div class="p-leader">${leader ? extractName(leader) : 'UNASSIGNED'}</div>
+            <div class="p-status-dot ${st}"></div>
+          </div>`;
+      }).join('') || '<div style="color:var(--muted);font-size:13px;">No partitions active.</div>';
+
+      // ── Render Consumer Groups ──
+      const grpEl = document.getElementById('consumer-groups');
+      const grpKeys = Object.keys(groups);
+      if (grpKeys.length === 0) {
+        grpEl.innerHTML = '<div style="color:var(--muted);font-size:13px;">No consumer groups registered yet.</div>';
+      } else {
+        grpEl.innerHTML = grpKeys.map(gid => {
+          const consumers = Object.entries(groups[gid] || {}).map(([cid, pid]) =>
+            `<div class="consumer-item"><span class="consumer-id">${cid}</span><span class="consumer-partition">${pid}</span></div>`
+          ).join('');
+          return `<div class="group-card"><div class="group-name">📧 ${gid}</div>${consumers}</div>`;
+        }).join('');
+      }
+
+    } catch (e) {
+      document.getElementById('badge-text').textContent = 'Disconnected';
+      addLog(`❌ Failed to reach Coordinator: ${e.message}`, 'error');
+    }
+  }
+
+  // Boot
+  addLog('🚀 Dashboard initialized. Connecting to Coordinator...', 'info');
+  refresh();
+  setInterval(refresh, 1500);
+</script>
+</body>
+</html>

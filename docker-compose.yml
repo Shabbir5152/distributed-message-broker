@@ -1,0 +1,108 @@
+version: '3.8'
+
+services:
+  coordinator:
+    build: .
+    container_name: coordinator
+    command: uvicorn coordinator:app --host 0.0.0.0 --port 8080
+    ports:
+      - "8080:8080"
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  broker-1:
+    build: .
+    container_name: broker-1
+    command: uvicorn broker:app --host 0.0.0.0 --port 8000
+    depends_on:
+      - coordinator
+    environment:
+      - PYTHONUNBUFFERED=1
+      - COORDINATOR_URL=http://coordinator:8080
+      - BROKER_URL=http://broker-1:8000
+    volumes:
+      - ./data_broker1:/app/data
+
+  broker-2:
+    build: .
+    container_name: broker-2
+    command: uvicorn broker:app --host 0.0.0.0 --port 8000
+    depends_on:
+      - coordinator
+    environment:
+      - PYTHONUNBUFFERED=1
+      - COORDINATOR_URL=http://coordinator:8080
+      - BROKER_URL=http://broker-2:8000
+    volumes:
+      - ./data_broker2:/app/data
+
+  broker-3:
+    build: .
+    container_name: broker-3
+    command: uvicorn broker:app --host 0.0.0.0 --port 8000
+    depends_on:
+      - coordinator
+    environment:
+      - PYTHONUNBUFFERED=1
+      - COORDINATOR_URL=http://coordinator:8080
+      - BROKER_URL=http://broker-3:8000
+    volumes:
+      - ./data_broker3:/app/data
+
+  consumer-1:
+    build: .
+    container_name: consumer-1
+    command: python consumer_email.py
+    depends_on:
+      - coordinator
+      - broker-1
+      - broker-2
+      - broker-3
+    environment:
+      - PYTHONUNBUFFERED=1
+      - COORDINATOR_URL=http://coordinator:8080
+      - GROUP_ID=email_alert_group
+      - CONSUMER_ID=email_worker_1
+
+  consumer-2:
+    build: .
+    container_name: consumer-2
+    command: python consumer_email.py
+    depends_on:
+      - coordinator
+      - broker-1
+      - broker-2
+      - broker-3
+    environment:
+      - PYTHONUNBUFFERED=1
+      - COORDINATOR_URL=http://coordinator:8080
+      - GROUP_ID=email_alert_group
+      - CONSUMER_ID=email_worker_2
+
+  consumer-3:
+    build: .
+    container_name: consumer-3
+    command: python consumer_email.py
+    depends_on:
+      - coordinator
+      - broker-1
+      - broker-2
+      - broker-3
+    environment:
+      - PYTHONUNBUFFERED=1
+      - COORDINATOR_URL=http://coordinator:8080
+      - GROUP_ID=email_alert_group
+      - CONSUMER_ID=email_worker_3
+
+  producer-bot:
+    build: .
+    container_name: producer-bot
+    command: python producer_bot.py
+    depends_on:
+      - coordinator
+      - broker-1
+      - broker-2
+      - broker-3
+    environment:
+      - PYTHONUNBUFFERED=1
+      - COORDINATOR_URL=http://coordinator:8080
