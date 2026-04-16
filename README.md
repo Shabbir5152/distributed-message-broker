@@ -39,11 +39,11 @@ The architecture closely mirrors production-grade systems like Apache Kafka and 
             │                   │
             ▼                   ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                        COORDINATOR                           │
-│   (Leader Election · Discovery API · Health Monitoring)      │
-│                   http://localhost:8080                      │
+│                        COORDINATOR                          │
+│   (Leader Election · Discovery API · Health Monitoring)     │
+│                   http://localhost:8080                     │
 └───────────────┬─────────────────┬────────────────┬──────────┘
-                │  Heartbeats     │  Discovery      │
+                │  Heartbeats     │  Discovery     │
     ┌───────────▼──────┐ ┌────────▼──────┐ ┌───────▼────────┐
     │    BROKER - 1    │ │  BROKER - 2   │ │   BROKER - 3   │
     │  (Leader P0, P1) │ │ (Leader P2)   │ │  (Follower)    │
