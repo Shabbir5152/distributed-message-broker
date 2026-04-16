@@ -31,6 +31,13 @@ The architecture closely mirrors production-grade systems like Apache Kafka and 
 ## 🏗️ Architecture
 
 ```
+    ┌──────────────┐   ┌───────────────┐
+    │   PRODUCER   │   │ CONSUMER GROUP│
+    │(Manual / Bot)│   │ (3 Workers)   │
+    └──────────────┘   └───────────────┘
+        Produce                Consumer
+            │                   │
+            ▼                   ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                        COORDINATOR                           │
 │   (Leader Election · Discovery API · Health Monitoring)      │
@@ -42,13 +49,6 @@ The architecture closely mirrors production-grade systems like Apache Kafka and 
     │  (Leader P0, P1) │ │ (Leader P2)   │ │  (Follower)    │
     │  + Replicas P2   │ │ + Replicas    │ │  + Replicas    │
     └──────────────────┘ └───────────────┘ └────────────────┘
-            ▲                   ▲
-       Produce                Consume
-            │                   │
-    ┌───────┴───────┐   ┌───────┴────────┐
-    │   PRODUCER    │   │ CONSUMER GROUP │
-    │ (Manual / Bot)│   │ (3 Workers)    │
-    └───────────────┘   └────────────────┘
 ```
 
 ### Key Components
